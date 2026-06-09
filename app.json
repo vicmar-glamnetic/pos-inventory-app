@@ -1,0 +1,16 @@
+{
+  "expo": {
+    "name": "Quick POS",
+    "slug": "quick-pos",
+    "version": "1.0.0",
+    "orientation": "default",
+    "userInterfaceStyle": "light",
+    "ios": {
+      "supportsTablet": true,
+      "bundleIdentifier": "com.quickpos.app"
+    },
+    "android": {
+      "package": "com.quickpos.app"
+    }
+  }
+}

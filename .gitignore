@@ -1,0 +1,27 @@
+# Dependencies
+node_modules/
+
+# IDE
+.idea/
+
+# Expo
+.expo/
+dist/
+web-build/
+
+# Native build output
+android/
+ios/
+
+# Environment
+.env
+.env.local
+.env.*.local
+
+# OS
+.DS_Store
+*.log
+
+# EAS
+.easignore
+eas.json
