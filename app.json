@@ -1,16 +1,22 @@
 {
   "expo": {
-    "name": "Quick POS",
-    "slug": "quick-pos",
+    "name": "Cansi De Mansilingan",
+    "slug": "cansi-de-mansilingan",
     "version": "1.0.0",
     "orientation": "default",
     "userInterfaceStyle": "light",
     "ios": {
       "supportsTablet": true,
-      "bundleIdentifier": "com.quickpos.app"
+      "bundleIdentifier": "com.cansidemansilingan.pos"
     },
     "android": {
-      "package": "com.quickpos.app"
-    }
+      "package": "com.cansidemansilingan.pos"
+    },
+    "extra": {
+      "eas": {
+        "projectId": "3fd014d5-f4fd-48b6-97e0-4a3a9efb21c0"
+      }
+    },
+    "owner": "koolice234"
   }
 }
