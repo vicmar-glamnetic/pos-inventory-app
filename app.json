@@ -18,6 +18,11 @@
         "backgroundColor": "#e8521a"
       }
     },
-    "owner": "koolice234"
+    "owner": "koolice234",
+    "extra": {
+      "eas": {
+        "projectId": "b0b7a212-9563-49f5-9be5-3ed4f8b0510f"
+      }
+    }
   }
 }
