@@ -17,6 +17,7 @@ import { Ionicons } from '@expo/vector-icons';
 import MenuItemCard from '../components/MenuItemCard';
 import ReceiptModal from '../components/ReceiptModal';
 import { getAllMenuItems, saveOrder, getOrderItems, getCategories } from '../database/db';
+import { syncPending } from '../services/syncService';
 import { formatPeso } from '../utils/formatCurrency';
 
 const DISCOUNT_TYPES = [
@@ -146,6 +147,7 @@ export default function OrderScreen() {
     clearCart();
     setMenuItems(getAllMenuItems());
     setCategories(getCategories());
+    syncPending(); // push to Supabase immediately after order
   }
 
   // ── Category bar (same in both layouts) ─────────────────────────────────────

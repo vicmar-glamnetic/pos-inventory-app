@@ -21,8 +21,9 @@ export function startSync(onSyncChange) {
   syncPending();
 
   // Re-sync whenever connectivity is restored
+  // Note: isInternetReachable is null on Android by default, so only check isConnected
   _unsubscribe = NetInfo.addEventListener((state) => {
-    if (state.isConnected && state.isInternetReachable !== false) {
+    if (state.isConnected) {
       syncPending();
     }
   });
