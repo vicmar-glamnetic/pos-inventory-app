@@ -1,30 +1,38 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { StatusBar } from 'expo-status-bar';
 import { NavigationContainer } from '@react-navigation/native';
 import { createBottomTabNavigator } from '@react-navigation/bottom-tabs';
 import { Ionicons } from '@expo/vector-icons';
 
 import { initDatabase } from './src/database/db';
+import { startSync, stopSync } from './src/services/syncService';
 import OrderScreen from './src/screens/OrderScreen';
 import MenuScreen from './src/screens/MenuScreen';
 import InventoryScreen from './src/screens/InventoryScreen';
 import SummaryScreen from './src/screens/SummaryScreen';
 import SettingsScreen from './src/screens/SettingsScreen';
+import AdminScreen from './src/screens/AdminScreen';
 
 const Tab = createBottomTabNavigator();
 const BRAND = '#e8521a';
 
 const TAB_ICONS = {
-  Order: ['fast-food', 'fast-food-outline'],
-  Menu: ['restaurant', 'restaurant-outline'],
-  Inventory: ['cube', 'cube-outline'],
-  Summary: ['bar-chart', 'bar-chart-outline'],
-  Settings: ['settings', 'settings-outline'],
+  Order:     ['fast-food',            'fast-food-outline'],
+  Menu:      ['restaurant',           'restaurant-outline'],
+  Inventory: ['cube',                 'cube-outline'],
+  Summary:   ['bar-chart',            'bar-chart-outline'],
+  Settings:  ['settings',             'settings-outline'],
+  Admin:     ['shield-checkmark',     'shield-checkmark-outline'],
 };
 
 export default function App() {
   // Runs synchronously before any child screen mounts — DB is ready
   useState(() => { initDatabase(); });
+
+  useEffect(() => {
+    startSync();
+    return () => stopSync();
+  }, []);
 
   return (
     <NavigationContainer>
@@ -68,6 +76,11 @@ export default function App() {
           name="Settings"
           component={SettingsScreen}
           options={{ title: 'Store Settings', tabBarLabel: 'Settings' }}
+        />
+        <Tab.Screen
+          name="Admin"
+          component={AdminScreen}
+          options={{ title: 'Admin Dashboard', tabBarLabel: 'Admin' }}
         />
       </Tab.Navigator>
     </NavigationContainer>

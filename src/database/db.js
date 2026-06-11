@@ -86,6 +86,8 @@ export function initDatabase() {
     'ALTER TABLE orders ADD COLUMN discount_label TEXT DEFAULT ""',
     'ALTER TABLE orders ADD COLUMN table_name TEXT DEFAULT ""',
     'ALTER TABLE orders ADD COLUMN status TEXT DEFAULT "completed"',
+    'ALTER TABLE orders ADD COLUMN supabase_id TEXT',
+    'ALTER TABLE purchases ADD COLUMN supabase_id TEXT',
   ];
   for (const sql of migrations) {
     try { database.execSync(sql); } catch {}
@@ -98,6 +100,7 @@ export function initDatabase() {
     ['store_phone', ''],
     ['receipt_footer', 'Thank you for your purchase!'],
     ['currency_symbol', '₱'],
+    ['admin_pin', '1234'],
   ];
   for (const [key, value] of defaults) {
     database.runSync('INSERT OR IGNORE INTO settings (key, value) VALUES (?, ?)', [key, value]);
@@ -399,4 +402,102 @@ export function saveSetting(key, value) {
     'INSERT OR REPLACE INTO settings (key, value) VALUES (?, ?)',
     [key, String(value)]
   );
+}
+
+// ── Sync helpers ──────────────────────────────────────────────────────────────
+
+export function getUnsyncedOrders() {
+  return getDatabase().getAllSync(
+    'SELECT * FROM orders WHERE supabase_id IS NULL ORDER BY created_at ASC'
+  );
+}
+
+export function getUnsyncedPurchases() {
+  return getDatabase().getAllSync(
+    'SELECT * FROM purchases WHERE supabase_id IS NULL ORDER BY created_at ASC'
+  );
+}
+
+export function markOrderSynced(localId, supabaseId) {
+  return getDatabase().runSync(
+    'UPDATE orders SET supabase_id = ? WHERE id = ?',
+    [supabaseId, localId]
+  );
+}
+
+export function markPurchaseSynced(localId, supabaseId) {
+  return getDatabase().runSync(
+    'UPDATE purchases SET supabase_id = ? WHERE id = ?',
+    [supabaseId, localId]
+  );
+}
+
+export function getPendingSyncCount() {
+  const db = getDatabase();
+  const orders = db.getFirstSync(
+    'SELECT COUNT(*) as c FROM orders WHERE supabase_id IS NULL'
+  )?.c || 0;
+  const purchases = db.getFirstSync(
+    'SELECT COUNT(*) as c FROM purchases WHERE supabase_id IS NULL'
+  )?.c || 0;
+  return orders + purchases;
+}
+
+// ── Admin helpers ─────────────────────────────────────────────────────────────
+
+export function getAdminStats() {
+  const db = getDatabase();
+  const DONE = `(status IS NULL OR status = 'completed')`;
+  const today = new Date().toISOString().split('T')[0];
+  const monthStart = today.substring(0, 7) + '-01';
+
+  const todayTotal = db.getFirstSync(
+    `SELECT COALESCE(SUM(total_amount), 0) as v FROM orders WHERE date(created_at) = ? AND ${DONE}`,
+    [today]
+  )?.v || 0;
+
+  const monthTotal = db.getFirstSync(
+    `SELECT COALESCE(SUM(total_amount), 0) as v FROM orders WHERE date(created_at) >= ? AND ${DONE}`,
+    [monthStart]
+  )?.v || 0;
+
+  const allTotal = db.getFirstSync(
+    `SELECT COALESCE(SUM(total_amount), 0) as v FROM orders WHERE ${DONE}`
+  )?.v || 0;
+
+  const allOrders = db.getFirstSync(
+    `SELECT COUNT(*) as v FROM orders WHERE ${DONE}`
+  )?.v || 0;
+
+  const voidedCount = db.getFirstSync(
+    `SELECT COUNT(*) as v FROM orders WHERE status = 'voided'`
+  )?.v || 0;
+
+  const pendingSync = getPendingSyncCount();
+
+  return { todayTotal, monthTotal, allTotal, allOrders, voidedCount, pendingSync };
+}
+
+export function getDailySales(days = 30) {
+  return getDatabase().getAllSync(`
+    SELECT
+      date(created_at) as date,
+      COUNT(*) as orders,
+      COALESCE(SUM(total_amount), 0) as total
+    FROM orders
+    WHERE (status IS NULL OR status = 'completed')
+      AND created_at >= date('now', '-${days} days')
+    GROUP BY date(created_at)
+    ORDER BY date DESC
+  `);
+}
+
+export function getRecentOrdersAdmin(limit = 50) {
+  return getDatabase().getAllSync(`
+    SELECT id, subtotal, discount_amount, discount_label, total_amount,
+           amount_tendered, change_amount, table_name, note, status, created_at, supabase_id
+    FROM orders
+    ORDER BY created_at DESC
+    LIMIT ?
+  `, [limit]);
 }

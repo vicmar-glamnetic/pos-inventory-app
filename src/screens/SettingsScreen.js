@@ -129,6 +129,12 @@ export default function SettingsScreen() {
   const [currencySymbol, setCurrencySymbol] = useState('₱');
   const [dirty, setDirty] = useState(false);
 
+  // Admin PIN
+  const [currentPin, setCurrentPin] = useState('1234');
+  const [pinStep, setPinStep] = useState(null); // null | 'new' | 'confirm'
+  const [pinInput, setPinInput] = useState('');
+  const [newPinTemp, setNewPinTemp] = useState('');
+
   // Categories
   const [categories, setCategories] = useState([]);
   const [catModalVisible, setCatModalVisible] = useState(false);
@@ -147,8 +153,38 @@ export default function SettingsScreen() {
     setStorePhone(s.store_phone || '');
     setReceiptFooter(s.receipt_footer || '');
     setCurrencySymbol(s.currency_symbol || '₱');
+    setCurrentPin(s.admin_pin || '1234');
     setDirty(false);
     setCategories(getCategories());
+  }
+
+  // PIN change flow
+  function startPinChange() { setPinStep('new'); setPinInput(''); setNewPinTemp(''); }
+  function cancelPinChange() { setPinStep(null); setPinInput(''); setNewPinTemp(''); }
+  function handlePinDigit(d) {
+    const next = pinInput + d;
+    if (next.length > 4) return;
+    setPinInput(next);
+    if (next.length === 4) {
+      if (pinStep === 'new') {
+        setNewPinTemp(next);
+        setPinStep('confirm');
+        setPinInput('');
+      } else if (pinStep === 'confirm') {
+        if (next === newPinTemp) {
+          saveSetting('admin_pin', next);
+          setCurrentPin(next);
+          setPinStep(null);
+          setPinInput('');
+          Alert.alert('PIN Updated', 'Your new Admin PIN has been saved.');
+        } else {
+          Alert.alert('Mismatch', 'PINs do not match. Please try again.');
+          setPinStep('new');
+          setPinInput('');
+          setNewPinTemp('');
+        }
+      }
+    }
   }
 
   function mark(setter) {
@@ -252,6 +288,64 @@ export default function SettingsScreen() {
           <Ionicons name="checkmark-circle" size={20} color="#fff" />
           <Text style={styles.saveBtnText}>Save Settings</Text>
         </TouchableOpacity>
+
+        {/* Admin Security */}
+        <SectionHeader title="Admin Security" />
+        <View style={styles.card}>
+          {pinStep === null ? (
+            <View style={[styles.field, { flexDirection: 'row', alignItems: 'center' }]}>
+              <View style={{ flex: 1 }}>
+                <Text style={styles.fieldLabel}>Admin PIN</Text>
+                <Text style={{ fontSize: 13, color: '#999', marginTop: 2 }}>
+                  Current PIN: {'●'.repeat(currentPin.length)}  •  Protects the Admin tab
+                </Text>
+              </View>
+              <TouchableOpacity style={styles.changePinBtn} onPress={startPinChange}>
+                <Ionicons name="key-outline" size={15} color="#1a6fb5" />
+                <Text style={styles.changePinText}>Change PIN</Text>
+              </TouchableOpacity>
+            </View>
+          ) : (
+            <View style={styles.field}>
+              <Text style={styles.fieldLabel}>
+                {pinStep === 'new' ? 'Enter New 4-Digit PIN' : 'Confirm New PIN'}
+              </Text>
+              <Text style={{ fontSize: 12, color: '#aaa', marginBottom: 10 }}>
+                {pinStep === 'new' ? 'Tap 4 digits below' : 'Tap the same PIN again to confirm'}
+              </Text>
+              {/* Mini PIN dots */}
+              <View style={{ flexDirection: 'row', gap: 10, marginBottom: 12 }}>
+                {[0,1,2,3].map((i) => (
+                  <View key={i} style={[
+                    styles.miniDot,
+                    pinInput.length > i && styles.miniDotFilled,
+                  ]} />
+                ))}
+              </View>
+              {/* Mini numpad */}
+              <View style={styles.miniPad}>
+                {['1','2','3','4','5','6','7','8','9','','0','del'].map((k, idx) => {
+                  if (k === '') return <View key={idx} style={styles.miniPadEmpty} />;
+                  return (
+                    <TouchableOpacity
+                      key={idx}
+                      style={[styles.miniPadKey, k === 'del' && { backgroundColor: '#f4f4f4' }]}
+                      onPress={() => k === 'del' ? setPinInput((p) => p.slice(0,-1)) : handlePinDigit(k)}
+                    >
+                      {k === 'del'
+                        ? <Ionicons name="backspace-outline" size={18} color="#555" />
+                        : <Text style={styles.miniPadText}>{k}</Text>
+                      }
+                    </TouchableOpacity>
+                  );
+                })}
+              </View>
+              <TouchableOpacity onPress={cancelPinChange} style={{ marginTop: 10, alignSelf: 'center' }}>
+                <Text style={{ color: '#aaa', fontSize: 13 }}>Cancel</Text>
+              </TouchableOpacity>
+            </View>
+          )}
+        </View>
 
         {/* Categories */}
         <View style={styles.catSection}>
@@ -416,6 +510,26 @@ const styles = StyleSheet.create({
   catIconBtn: { padding: 6 },
   catEmpty: { textAlign: 'center', color: '#bbb', paddingVertical: 20, fontSize: 14 },
   catHint: { fontSize: 11, color: '#bbb', marginTop: 6, marginLeft: 4 },
+  // PIN change
+  changePinBtn: {
+    flexDirection: 'row', alignItems: 'center', gap: 4,
+    borderWidth: 1.5, borderColor: '#1a6fb5', borderRadius: 8,
+    paddingHorizontal: 10, paddingVertical: 7,
+  },
+  changePinText: { color: '#1a6fb5', fontWeight: '600', fontSize: 13 },
+  miniDot: {
+    width: 14, height: 14, borderRadius: 7,
+    borderWidth: 2, borderColor: '#ccc',
+  },
+  miniDotFilled: { backgroundColor: '#e8521a', borderColor: '#e8521a' },
+  miniPad: { flexDirection: 'row', flexWrap: 'wrap', gap: 8, width: 192 },
+  miniPadKey: {
+    width: 56, height: 48, borderRadius: 10,
+    backgroundColor: '#f0f0f0',
+    alignItems: 'center', justifyContent: 'center',
+  },
+  miniPadEmpty: { width: 56, height: 48 },
+  miniPadText: { fontSize: 18, fontWeight: '600', color: '#222' },
   // Category modal
   catModalOverlay: {
     flex: 1,
