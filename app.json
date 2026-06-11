@@ -5,12 +5,18 @@
     "version": "1.0.0",
     "orientation": "default",
     "userInterfaceStyle": "light",
+    "icon": "./assets/icon.jpg",
     "ios": {
       "supportsTablet": true,
-      "bundleIdentifier": "com.cansidemansilingan.pos"
+      "bundleIdentifier": "com.cansidemansilingan.pos",
+      "icon": "./assets/icon.jpg"
     },
     "android": {
-      "package": "com.cansidemansilingan.pos"
+      "package": "com.cansidemansilingan.pos",
+      "adaptiveIcon": {
+        "foregroundImage": "./assets/icon.jpg",
+        "backgroundColor": "#e8521a"
+      }
     },
     "extra": {
       "eas": {
