@@ -325,21 +325,32 @@ export default function OrderScreen() {
                 {TotalsBlock}
 
                 {/* Payment */}
-                <TextInput
-                  style={styles.tenderedInput}
-                  placeholder="Cash Tendered (₱)"
-                  keyboardType="numeric"
-                  value={tendered}
-                  onChangeText={setTendered}
-                />
-                {tenderedNum >= total && total > 0 && (
-                  <Text style={styles.changeText}>Change: {formatPeso(change)}</Text>
-                )}
+                <View style={styles.paySection}>
+                  <Text style={styles.payLabel}>Cash Tendered</Text>
+                  <TextInput
+                    style={styles.tenderedInput}
+                    placeholder="0.00"
+                    placeholderTextColor="#bbb"
+                    keyboardType="numeric"
+                    value={tendered}
+                    onChangeText={setTendered}
+                  />
+                  {tenderedNum >= total && total > 0 && (
+                    <View style={styles.changeBadge}>
+                      <Text style={styles.changeLabel}>Change</Text>
+                      <Text style={styles.changeAmount}>{formatPeso(change)}</Text>
+                    </View>
+                  )}
+                  {tenderedNum > 0 && tenderedNum < total && total > 0 && (
+                    <Text style={styles.shortfallText}>Short by {formatPeso(total - tenderedNum)}</Text>
+                  )}
+                </View>
 
                 {/* Note */}
                 <TextInput
                   style={[styles.noteInput, { marginBottom: 0 }]}
                   placeholder="Note (optional)"
+                  placeholderTextColor="#bbb"
                   value={note}
                   onChangeText={setNote}
                 />
@@ -435,22 +446,31 @@ export default function OrderScreen() {
           {DiscountSection}
           {TotalsBlock}
 
-          <View style={styles.payRow}>
+          <View style={styles.paySection}>
+            <Text style={styles.payLabel}>Cash Tendered</Text>
             <TextInput
               style={styles.tenderedInput}
-              placeholder="Cash Tendered (₱)"
+              placeholder="0.00"
+              placeholderTextColor="#bbb"
               keyboardType="numeric"
               value={tendered}
               onChangeText={setTendered}
             />
             {tenderedNum >= total && total > 0 && (
-              <Text style={styles.changeText}>Change: {formatPeso(change)}</Text>
+              <View style={styles.changeBadge}>
+                <Text style={styles.changeLabel}>Change</Text>
+                <Text style={styles.changeAmount}>{formatPeso(change)}</Text>
+              </View>
+            )}
+            {tenderedNum > 0 && tenderedNum < total && total > 0 && (
+              <Text style={styles.shortfallText}>Short by {formatPeso(total - tenderedNum)}</Text>
             )}
           </View>
 
           <TextInput
             style={styles.noteInput}
             placeholder="Note (optional)"
+            placeholderTextColor="#bbb"
             value={note}
             onChangeText={setNote}
           />
@@ -624,19 +644,47 @@ const styles = StyleSheet.create({
   totalValue:       { fontSize: 18, fontWeight: '700', color: '#e8521a' },
 
   // ── Payment ───────────────────────────────────────────────────────────────────
-  payRow: { flexDirection: 'row', alignItems: 'center', marginTop: 6, gap: 10 },
+  paySection: {
+    backgroundColor: '#fff8f5',
+    borderRadius: 10,
+    borderWidth: 1,
+    borderColor: '#f0ddd5',
+    padding: 10,
+    marginTop: 8,
+    gap: 6,
+  },
+  payLabel: {
+    fontSize: 11,
+    fontWeight: '700',
+    color: '#b06040',
+    textTransform: 'uppercase',
+    letterSpacing: 0.5,
+  },
   tenderedInput: {
-    flex: 1,
     borderWidth: 1.5,
-    borderColor: '#ddd',
+    borderColor: '#e8521a',
+    borderRadius: 8,
+    paddingHorizontal: 12,
+    paddingVertical: 9,
+    fontSize: 18,
+    fontWeight: '600',
+    backgroundColor: '#fff',
+    color: '#222',
+  },
+  changeBadge: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    backgroundColor: '#e8f5e9',
     borderRadius: 8,
     paddingHorizontal: 12,
     paddingVertical: 8,
-    fontSize: 15,
-    backgroundColor: '#fafafa',
-    marginTop: 8,
+    borderWidth: 1,
+    borderColor: '#c8e6c9',
   },
-  changeText: { fontSize: 13, color: '#3a7d44', fontWeight: '600' },
+  changeLabel:   { fontSize: 13, color: '#2e7d32', fontWeight: '600' },
+  changeAmount:  { fontSize: 17, color: '#2e7d32', fontWeight: '800' },
+  shortfallText: { fontSize: 12, color: '#c62828', fontWeight: '600', textAlign: 'center' },
   noteInput: {
     marginTop: 6,
     borderWidth: 1.5,
@@ -646,6 +694,7 @@ const styles = StyleSheet.create({
     paddingVertical: 7,
     fontSize: 14,
     backgroundColor: '#fafafa',
+    color: '#222',
   },
 
   // ── Portrait action row ───────────────────────────────────────────────────────
