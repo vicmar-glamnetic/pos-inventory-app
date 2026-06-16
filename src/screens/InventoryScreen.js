@@ -22,6 +22,7 @@ import {
   savePurchase,
   getPurchases,
   getPurchaseItems,
+  touchRestockedAt,
 } from '../database/db';
 import { formatPeso } from '../utils/formatCurrency';
 
@@ -284,6 +285,7 @@ export default function InventoryScreen() {
   function applyRestock(item, amount) {
     if (item.stock < 0) {
       updateMenuItem(item.id, item.name, item.price, item.category, item.is_available === 1, amount);
+      touchRestockedAt(item.id);
     } else {
       restockItem(item.id, amount);
       if (item.stock === 0) {
@@ -332,6 +334,10 @@ export default function InventoryScreen() {
 
   function formatPurchaseDate(str) {
     return new Date(str).toLocaleDateString('en-PH', { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' });
+  }
+
+  function formatRestockedAt(str) {
+    return new Date(str).toLocaleDateString('en-PH', { month: 'short', day: 'numeric', year: 'numeric', hour: '2-digit', minute: '2-digit' });
   }
 
   return (
@@ -400,6 +406,11 @@ export default function InventoryScreen() {
                       : item.stock > 0 && item.stock < LOW_STOCK_THRESHOLD
                       ? <Text style={styles.tagLow}>  LOW</Text> : null}
                   </Text>
+                  {!!item.last_restocked_at && (
+                    <Text style={styles.restockedAt}>
+                      Restocked {formatRestockedAt(item.last_restocked_at)}
+                    </Text>
+                  )}
                 </View>
                 <View style={styles.stockActions}>
                   {item.stock >= 0 ? (
@@ -582,6 +593,7 @@ const styles = StyleSheet.create({
   itemMeta: { fontSize: 12, color: '#999', marginTop: 3 },
   tagOut: { color: '#c62828', fontWeight: '700' },
   tagLow: { color: '#e65100', fontWeight: '700' },
+  restockedAt: { fontSize: 11, color: '#aaa', marginTop: 2 },
   stockActions: { flexDirection: 'row', alignItems: 'center', gap: 4 },
   actionBtn: {
     paddingHorizontal: 10,

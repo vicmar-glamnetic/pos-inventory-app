@@ -88,6 +88,7 @@ export function initDatabase() {
     'ALTER TABLE orders ADD COLUMN status TEXT DEFAULT "completed"',
     'ALTER TABLE orders ADD COLUMN supabase_id TEXT',
     'ALTER TABLE purchases ADD COLUMN supabase_id TEXT',
+    'ALTER TABLE menu_items ADD COLUMN last_restocked_at TEXT',
   ];
   for (const sql of migrations) {
     try { database.execSync(sql); } catch {}
@@ -223,8 +224,15 @@ export function deleteMenuItem(id) {
 
 export function restockItem(id, amount) {
   return getDatabase().runSync(
-    'UPDATE menu_items SET stock = stock + ? WHERE id = ? AND stock >= 0',
+    "UPDATE menu_items SET stock = stock + ?, last_restocked_at = datetime('now', 'localtime') WHERE id = ? AND stock >= 0",
     [amount, id]
+  );
+}
+
+export function touchRestockedAt(id) {
+  return getDatabase().runSync(
+    "UPDATE menu_items SET last_restocked_at = datetime('now', 'localtime') WHERE id = ?",
+    [id]
   );
 }
 
@@ -318,11 +326,12 @@ export function savePurchase(supplier, note, items) {
       'INSERT INTO purchase_items (purchase_id, menu_item_id, item_name, quantity, unit_cost) VALUES (?, ?, ?, ?, ?)',
       [purchaseId, item.id, item.name, item.quantity, item.unit_cost]
     );
-    // Add to stock (skip unlimited items)
+    // Add to stock and mark restock timestamp
     database.runSync(
       `UPDATE menu_items SET
         stock = CASE WHEN stock >= 0 THEN stock + ? ELSE stock END,
-        is_available = CASE WHEN stock >= 0 AND stock + ? > 0 THEN 1 ELSE is_available END
+        is_available = CASE WHEN stock >= 0 AND stock + ? > 0 THEN 1 ELSE is_available END,
+        last_restocked_at = datetime('now', 'localtime')
       WHERE id = ?`,
       [item.quantity, item.quantity, item.id]
     );
