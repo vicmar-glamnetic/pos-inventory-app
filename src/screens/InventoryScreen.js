@@ -16,61 +16,128 @@ import { useFocusEffect } from '@react-navigation/native';
 import { Ionicons } from '@expo/vector-icons';
 import {
   getAllMenuItemsAdmin,
-  restockItem,
-  setUnlimitedStock,
-  updateMenuItem,
   savePurchase,
   getPurchases,
   getPurchaseItems,
-  touchRestockedAt,
 } from '../database/db';
+import { pushStockRequest } from '../services/syncService';
+import { supabase } from '../config/supabase';
 import { formatPeso } from '../utils/formatCurrency';
 
 const LOW_STOCK_THRESHOLD = 5;
 
-// ── Restock Modal ─────────────────────────────────────────────────────────────
+// ── Edit Stock Modal ──────────────────────────────────────────────────────────
 
-function RestockModal({ visible, item, onConfirm, onClose }) {
-  const [amount, setAmount] = useState('');
-  const isUnlimited = item && item.stock < 0;
+function EditStockModal({ visible, item, onSave, onClose }) {
+  const [newStock, setNewStock] = useState('');
 
   React.useEffect(() => {
-    if (visible) setAmount('');
-  }, [visible]);
-
-  function handleConfirm() {
-    const n = parseInt(amount, 10);
-    if (isNaN(n) || n <= 0) { Alert.alert('Invalid', 'Enter a number greater than 0.'); return; }
-    onConfirm(n);
-  }
+    if (visible && item) setNewStock(item.stock < 0 ? '' : String(item.stock));
+  }, [visible, item]);
 
   if (!item) return null;
+
+  const isUnlimited = item.stock < 0;
+  const current = isUnlimited ? '∞' : item.stock;
+  const newNum = parseInt(newStock, 10);
+  const delta = !isNaN(newNum) && !isUnlimited ? newNum - item.stock : null;
+
+  function handleUpdate() {
+    if (newStock === '' || isNaN(newNum) || newNum < 0) {
+      Alert.alert('Invalid', 'Enter a valid stock number (0 or more).');
+      return;
+    }
+    onSave(item, newNum, false);
+    onClose();
+  }
+
+  function handleSetUnlimited() {
+    onSave(item, -1, true);
+    onClose();
+  }
+
   return (
     <Modal visible={visible} transparent animationType="fade" onRequestClose={onClose}>
-      <KeyboardAvoidingView style={styles.centeredOverlay} behavior={Platform.OS === 'ios' ? 'padding' : undefined}>
-        <View style={styles.modalCard}>
-          <Text style={styles.modalTitle}>{isUnlimited ? 'Set Stock Limit' : 'Restock'}: {item.name}</Text>
-          <Text style={styles.modalSub}>Current: {item.stock < 0 ? '∞ Unlimited' : `${item.stock} left`}</Text>
-          <Text style={styles.fieldLabel}>{isUnlimited ? 'Set stock to' : 'Add servings'}</Text>
-          <TextInput style={styles.modalInput} value={amount} onChangeText={setAmount} keyboardType="number-pad" placeholder="e.g. 20" autoFocus />
-          {!isUnlimited && (
-            <View style={styles.quickRow}>
-              {[5, 10, 20, 50].map((n) => (
-                <TouchableOpacity key={n} style={styles.quickBtn} onPress={() => setAmount(String(n))}>
-                  <Text style={styles.quickBtnText}>+{n}</Text>
-                </TouchableOpacity>
-              ))}
-            </View>
-          )}
-          <View style={styles.modalActions}>
-            <TouchableOpacity style={styles.modalCancelBtn} onPress={onClose}><Text style={styles.modalCancelText}>Cancel</Text></TouchableOpacity>
-            <TouchableOpacity style={styles.modalConfirmBtn} onPress={handleConfirm}><Text style={styles.modalConfirmText}>{isUnlimited ? 'Set Limit' : 'Add Stock'}</Text></TouchableOpacity>
+      <KeyboardAvoidingView style={esStyles.overlay} behavior={Platform.OS === 'ios' ? 'padding' : undefined}>
+        <View style={esStyles.card}>
+          <View style={esStyles.header}>
+            <Text style={esStyles.title}>Edit Stock</Text>
+            <TouchableOpacity onPress={onClose}><Ionicons name="close" size={22} color="#666" /></TouchableOpacity>
           </View>
+
+          <Text style={esStyles.itemName} numberOfLines={1}>{item.name}</Text>
+
+          <View style={esStyles.stockCards}>
+            <View style={esStyles.stockCard}>
+              <Text style={esStyles.cardLabel}>Current</Text>
+              <Text style={esStyles.cardValue}>{current}</Text>
+            </View>
+            <Ionicons name="arrow-forward" size={20} color="#ccc" />
+            <View style={[esStyles.stockCard, esStyles.stockCardNew]}>
+              <Text style={esStyles.cardLabel}>New</Text>
+              <Text style={[esStyles.cardValue, { color: '#e8521a' }]}>{newStock === '' ? '–' : newNum}</Text>
+            </View>
+          </View>
+
+          {delta !== null && (
+            <Text style={[esStyles.delta, delta > 0 ? esStyles.deltaPos : delta < 0 ? esStyles.deltaNeg : esStyles.deltaZero]}>
+              {delta > 0 ? `+${delta} will be added` : delta < 0 ? `${Math.abs(delta)} will be removed` : 'No change'}
+            </Text>
+          )}
+
+          <TextInput
+            style={esStyles.input}
+            value={newStock}
+            onChangeText={v => setNewStock(v.replace(/[^0-9]/g, ''))}
+            keyboardType="number-pad"
+            placeholder="Enter new stock"
+            placeholderTextColor="#bbb"
+            autoFocus
+          />
+
+          <View style={esStyles.actions}>
+            <TouchableOpacity style={esStyles.cancelBtn} onPress={onClose}>
+              <Text style={esStyles.cancelText}>Cancel</Text>
+            </TouchableOpacity>
+            <TouchableOpacity style={esStyles.updateBtn} onPress={handleUpdate}>
+              <Text style={esStyles.updateText}>Update Stock</Text>
+            </TouchableOpacity>
+          </View>
+
+          <TouchableOpacity style={esStyles.unlimitedBtn} onPress={handleSetUnlimited}>
+            <Ionicons name="infinite-outline" size={18} color="#666" />
+            <Text style={esStyles.unlimitedText}>Set as Unlimited (∞)</Text>
+          </TouchableOpacity>
         </View>
       </KeyboardAvoidingView>
     </Modal>
   );
 }
+
+const esStyles = StyleSheet.create({
+  overlay:      { flex: 1, backgroundColor: 'rgba(0,0,0,0.45)', alignItems: 'center', justifyContent: 'center' },
+  card:         { backgroundColor: '#fff', borderRadius: 16, padding: 20, width: 320, shadowColor: '#000', shadowOpacity: 0.15, shadowRadius: 12, elevation: 8 },
+  header:       { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 8 },
+  title:        { fontSize: 16, fontWeight: '700', color: '#222' },
+  itemName:     { fontSize: 13, color: '#666', marginBottom: 16 },
+  stockCards:   { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 12, marginBottom: 8 },
+  stockCard:    { flex: 1, backgroundColor: '#f5f5f5', borderRadius: 10, padding: 12, alignItems: 'center' },
+  stockCardNew: { backgroundColor: '#fff8f5', borderWidth: 1.5, borderColor: '#e8521a' },
+  cardLabel:    { fontSize: 11, color: '#999', fontWeight: '600', textTransform: 'uppercase', marginBottom: 4 },
+  cardValue:    { fontSize: 26, fontWeight: '800', color: '#333' },
+  delta:        { textAlign: 'center', fontSize: 13, fontWeight: '600', marginBottom: 12 },
+  deltaPos:     { color: '#3a7d44' },
+  deltaNeg:     { color: '#c62828' },
+  deltaZero:    { color: '#aaa' },
+  input:        { borderWidth: 1.5, borderColor: '#e8521a', borderRadius: 10, paddingHorizontal: 14, paddingVertical: 12, fontSize: 20, fontWeight: '700', textAlign: 'center', marginBottom: 14, color: '#222' },
+  actions:      { flexDirection: 'row', gap: 8, marginBottom: 10 },
+  cancelBtn:    { flex: 1, paddingVertical: 12, borderRadius: 10, borderWidth: 1.5, borderColor: '#ddd', alignItems: 'center' },
+  cancelText:   { color: '#666', fontWeight: '600', fontSize: 14 },
+  updateBtn:    { flex: 1, paddingVertical: 12, borderRadius: 10, backgroundColor: '#e8521a', alignItems: 'center' },
+  updateText:   { color: '#fff', fontWeight: '700', fontSize: 14 },
+  unlimitedBtn: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 6, paddingVertical: 10, borderRadius: 10, backgroundColor: '#f5f5f5' },
+  unlimitedText:{ fontSize: 13, color: '#666', fontWeight: '600' },
+});
 
 // ── Log Purchase Modal ────────────────────────────────────────────────────────
 
@@ -258,16 +325,31 @@ export default function InventoryScreen() {
   const [purchases, setPurchases] = useState([]);
   const [search, setSearch] = useState('');
   const [stockFilter, setStockFilter] = useState('all');
-  const [restockTarget, setRestockTarget] = useState(null);
+  const [editStockTarget, setEditStockTarget] = useState(null);
   const [logPurchaseVisible, setLogPurchaseVisible] = useState(false);
   const [detailPurchase, setDetailPurchase] = useState(null);
   const [detailItems, setDetailItems] = useState([]);
+  const [pendingMap, setPendingMap] = useState({}); // item.name → requested stock
 
-  useFocusEffect(useCallback(() => { reload(); }, []));
+  useFocusEffect(useCallback(() => {
+    reload();
+    loadPendingRequests();
+  }, []));
 
   function reload() {
     setItems(getAllMenuItemsAdmin());
     setPurchases(getPurchases());
+  }
+
+  async function loadPendingRequests() {
+    const { data } = await supabase
+      .from('stock_requests')
+      .select('item_name, stock')
+      .eq('source', 'app')
+      .eq('status', 'pending');
+    const map = {};
+    for (const r of (data || [])) map[r.item_name] = r.stock;
+    setPendingMap(map);
   }
 
   // ── Stock helpers ─────────────────────────────────────────────────────────
@@ -282,31 +364,18 @@ export default function InventoryScreen() {
   const outCount = items.filter((i) => i.stock === 0).length;
   const lowCount = items.filter((i) => i.stock > 0 && i.stock < LOW_STOCK_THRESHOLD).length;
 
-  function applyRestock(item, amount) {
-    if (item.stock < 0) {
-      updateMenuItem(item.id, item.name, item.price, item.category, item.is_available === 1, amount);
-      touchRestockedAt(item.id);
+  async function handleEditStockSave(item, newStock, isUnlimited) {
+    const requestedStock = isUnlimited ? -1 : newStock;
+    const ok = await pushStockRequest(item.name, requestedStock);
+    if (ok) {
+      setPendingMap(prev => ({ ...prev, [item.name]: requestedStock }));
+      Alert.alert(
+        'Request Sent',
+        `Stock change request for "${item.name}" has been sent to the web admin for approval.`
+      );
     } else {
-      restockItem(item.id, amount);
-      if (item.stock === 0) {
-        updateMenuItem(item.id, item.name, item.price, item.category, true, amount);
-      }
+      Alert.alert('Error', 'Could not send request. Check your internet connection.');
     }
-    reload();
-  }
-
-  function handleSetUnlimited(item) {
-    Alert.alert('Set Unlimited?', `Mark "${item.name}" as unlimited stock?`, [
-      { text: 'Cancel', style: 'cancel' },
-      {
-        text: 'Set Unlimited',
-        onPress: () => {
-          setUnlimitedStock(item.id);
-          if (item.stock === 0) updateMenuItem(item.id, item.name, item.price, item.category, true, -1);
-          reload();
-        },
-      },
-    ]);
   }
 
   // ── Purchase helpers ──────────────────────────────────────────────────────
@@ -390,8 +459,11 @@ export default function InventoryScreen() {
             data={stockFiltered}
             keyExtractor={(item) => String(item.id)}
             contentContainerStyle={styles.list}
-            renderItem={({ item }) => (
-              <View style={[styles.stockRow, item.stock === 0 && styles.stockRowOut]}>
+            renderItem={({ item }) => {
+              const hasPending = pendingMap[item.name] != null;
+              const pendingStock = pendingMap[item.name];
+              return (
+              <View style={[styles.stockRow, item.stock === 0 && !hasPending && styles.stockRowOut, hasPending && styles.stockRowPending]}>
                 <View style={styles.stockCircle}>
                   <Text style={[styles.stockNum, { color: stockColor(item) }]}>
                     {item.stock < 0 ? '∞' : String(item.stock)}
@@ -402,37 +474,27 @@ export default function InventoryScreen() {
                   <Text style={styles.itemName}>{item.name}</Text>
                   <Text style={styles.itemMeta}>
                     {item.category}  ·  {formatPeso(item.price)}
-                    {item.stock === 0 ? <Text style={styles.tagOut}>  SOLD OUT</Text>
+                    {item.stock === 0 && !hasPending ? <Text style={styles.tagOut}>  SOLD OUT</Text>
                       : item.stock > 0 && item.stock < LOW_STOCK_THRESHOLD
                       ? <Text style={styles.tagLow}>  LOW</Text> : null}
                   </Text>
+                  {hasPending && (
+                    <Text style={styles.tagPending}>
+                      Pending approval: {pendingStock === -1 ? '∞' : pendingStock} requested
+                    </Text>
+                  )}
                   {!!item.last_restocked_at && (
                     <Text style={styles.restockedAt}>
                       Restocked {formatRestockedAt(item.last_restocked_at)}
                     </Text>
                   )}
                 </View>
-                <View style={styles.stockActions}>
-                  {item.stock >= 0 ? (
-                    <>
-                      <TouchableOpacity style={styles.actionBtn} onPress={() => applyRestock(item, 10)}>
-                        <Text style={styles.actionBtnText}>+10</Text>
-                      </TouchableOpacity>
-                      <TouchableOpacity style={styles.actionBtn} onPress={() => setRestockTarget(item)}>
-                        <Ionicons name="add-circle-outline" size={18} color="#1a6fb5" />
-                      </TouchableOpacity>
-                      <TouchableOpacity style={styles.unlimitedBtn} onPress={() => handleSetUnlimited(item)}>
-                        <Text style={styles.unlimitedBtnText}>∞</Text>
-                      </TouchableOpacity>
-                    </>
-                  ) : (
-                    <TouchableOpacity style={[styles.actionBtn, { backgroundColor: '#f5f5f5', borderColor: '#ddd' }]} onPress={() => setRestockTarget(item)}>
-                      <Text style={[styles.actionBtnText, { color: '#555' }]}>Set limit</Text>
-                    </TouchableOpacity>
-                  )}
-                </View>
+                <TouchableOpacity style={styles.editBtn} onPress={() => setEditStockTarget(item)}>
+                  <Ionicons name="pencil-outline" size={18} color="#e8521a" />
+                </TouchableOpacity>
               </View>
-            )}
+              );
+            }}
             ListEmptyComponent={
               <Text style={styles.empty}>
                 {stockFilter === 'low' ? 'No low stock items.' : stockFilter === 'out' ? 'No sold out items.' : 'No items found.'}
@@ -483,11 +545,11 @@ export default function InventoryScreen() {
       )}
 
       {/* Modals */}
-      <RestockModal
-        visible={!!restockTarget}
-        item={restockTarget}
-        onConfirm={(amount) => { applyRestock(restockTarget, amount); setRestockTarget(null); }}
-        onClose={() => setRestockTarget(null)}
+      <EditStockModal
+        visible={!!editStockTarget}
+        item={editStockTarget}
+        onSave={handleEditStockSave}
+        onClose={() => setEditStockTarget(null)}
       />
       <LogPurchaseModal
         visible={logPurchaseVisible}
@@ -577,6 +639,7 @@ const styles = StyleSheet.create({
     elevation: 2,
   },
   stockRowOut: { borderLeftWidth: 4, borderLeftColor: '#ef5350' },
+  stockRowPending: { borderLeftWidth: 4, borderLeftColor: '#f59e0b' },
   stockCircle: {
     width: 52,
     height: 52,
@@ -593,26 +656,15 @@ const styles = StyleSheet.create({
   itemMeta: { fontSize: 12, color: '#999', marginTop: 3 },
   tagOut: { color: '#c62828', fontWeight: '700' },
   tagLow: { color: '#e65100', fontWeight: '700' },
+  tagPending: { fontSize: 11, color: '#d97706', fontWeight: '700', marginTop: 2 },
   restockedAt: { fontSize: 11, color: '#aaa', marginTop: 2 },
-  stockActions: { flexDirection: 'row', alignItems: 'center', gap: 4 },
-  actionBtn: {
-    paddingHorizontal: 10,
-    paddingVertical: 6,
+  editBtn: {
+    padding: 8,
     borderRadius: 8,
-    backgroundColor: '#e8f4fd',
+    backgroundColor: '#fff8f5',
     borderWidth: 1,
-    borderColor: '#90caf9',
+    borderColor: '#f0ddd5',
   },
-  actionBtnText: { fontSize: 13, color: '#1a6fb5', fontWeight: '700' },
-  unlimitedBtn: {
-    paddingHorizontal: 8,
-    paddingVertical: 6,
-    borderRadius: 8,
-    backgroundColor: '#f0f0f0',
-    borderWidth: 1,
-    borderColor: '#ddd',
-  },
-  unlimitedBtnText: { fontSize: 14, color: '#888', fontWeight: '700' },
 
   // Purchases view
   logPurchaseBtn: {
