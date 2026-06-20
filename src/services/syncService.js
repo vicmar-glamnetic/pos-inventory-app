@@ -32,10 +32,10 @@ export async function syncPending() {
   if (!isSupabaseConfigured || _isSyncing) return;
   _isSyncing = true;
   try {
-    await syncMenuItems();       // push new items + metadata (no stock for existing)
-    await syncOrders();          // push orders + decrement Supabase stock
-    await syncPurchases();       // push purchases + increment Supabase stock
-    await pullMenuItemUpdates(); // pull final stock from web into local SQLite
+    await pullMenuItemUpdates(); // pull web-approved stock into local SQLite
+    await syncMenuItems();       // push product metadata (never stock)
+    await syncOrders();          // push orders for reporting
+    await syncPurchases();       // push purchases for reporting
   } catch (e) {
     // Silent fail — will retry next connectivity event
   } finally {
@@ -47,7 +47,23 @@ export async function syncPending() {
   }
 }
 
-// Submit a stock change request from the app — web admin must approve before it takes effect
+// After an order is placed, push the sale-decremented stock to Supabase so
+// pullMenuItemUpdates doesn't restore the old value on the same sync cycle.
+export async function pushStockDecrement(cartItems) {
+  if (!isSupabaseConfigured) return;
+  await Promise.all(
+    cartItems
+      .filter(item => item.stock >= 0)
+      .map(item => {
+        const newStock = Math.max(0, item.stock - item.quantity);
+        return supabase.from('menu_items')
+          .update({ stock: newStock, is_available: newStock > 0 })
+          .eq('local_id', item.id);
+      })
+  );
+}
+
+// Submit a stock change request — web admin must approve before it takes effect on the app
 export async function pushStockRequest(itemName, requestedStock) {
   if (!isSupabaseConfigured) return false;
   const { error } = await supabase.from('stock_requests').insert({
@@ -59,17 +75,16 @@ export async function pushStockRequest(itemName, requestedStock) {
   return !error;
 }
 
-// Pull latest stock values from Supabase (web is authoritative) into local SQLite
+// Pull web-approved stock values into local SQLite
 async function pullMenuItemUpdates() {
   const { data, error } = await supabase
     .from('menu_items')
     .select('local_id, stock, is_available');
-
   if (error || !data?.length) return;
-
   const db = getDatabase();
   for (const row of data) {
     if (row.local_id == null) continue;
+    if (row.stock == null) continue;
     db.runSync(
       'UPDATE menu_items SET stock = ?, is_available = ? WHERE id = ?',
       [row.stock, row.is_available ? 1 : 0, row.local_id]
@@ -77,14 +92,13 @@ async function pullMenuItemUpdates() {
   }
 }
 
+// Sync only product metadata (name, price, category) — NEVER stock.
+// This ensures rows exist in Supabase so the web admin can find and set stock.
 async function syncMenuItems() {
   const items = getAllMenuItemsAdmin();
   const localIds = items.map(i => i.id);
 
-  if (localIds.length === 0) {
-    await supabase.from('menu_items').delete().not('local_id', 'is', null);
-    return;
-  }
+  if (localIds.length === 0) return;
 
   // Remove items deleted from the app
   await supabase.from('menu_items')
@@ -92,14 +106,14 @@ async function syncMenuItems() {
     .not('local_id', 'in', `(${localIds.join(',')})`)
     .not('local_id', 'is', null);
 
-  // Find which items are new (not yet in Supabase)
+  // Find which items already exist in Supabase
   const { data: existing } = await supabase
     .from('menu_items')
     .select('local_id')
     .in('local_id', localIds);
   const existingIds = new Set((existing || []).map(r => r.local_id));
 
-  // Insert brand-new items with their initial stock
+  // Insert brand-new items with stock=null so web admin sets the initial stock
   const newItems = items.filter(i => !existingIds.has(i.id));
   if (newItems.length > 0) {
     await supabase.from('menu_items').insert(newItems.map(i => ({
@@ -107,13 +121,12 @@ async function syncMenuItems() {
       name: i.name,
       price: i.price,
       category: i.category || '',
-      stock: i.stock,
-      is_available: i.is_available === 1,
-      last_restocked_at: i.last_restocked_at || null,
+      stock: null,
+      is_available: true,
     })));
   }
 
-  // Update metadata only for existing items — web controls stock for these
+  // Update only name/price/category — never touch stock (web admin controls that)
   const existingItems = items.filter(i => existingIds.has(i.id));
   if (existingItems.length > 0) {
     await Promise.all(existingItems.map(i =>
@@ -121,7 +134,6 @@ async function syncMenuItems() {
         name: i.name,
         price: i.price,
         category: i.category || '',
-        last_restocked_at: i.last_restocked_at || null,
       }).eq('local_id', i.id)
     ));
   }
@@ -159,20 +171,6 @@ async function syncOrders() {
             quantity: i.quantity,
           }))
         );
-
-        // Decrement Supabase stock per item sold (skip unlimited items)
-        for (const item of items) {
-          const { data: menuItem } = await supabase
-            .from('menu_items')
-            .select('stock')
-            .eq('name', item.menu_item_name)
-            .maybeSingle();
-          if (menuItem && menuItem.stock !== -1 && menuItem.stock > 0) {
-            await supabase.from('menu_items')
-              .update({ stock: Math.max(0, menuItem.stock - item.quantity) })
-              .eq('name', item.menu_item_name);
-          }
-        }
       }
       markOrderSynced(order.id, data.id);
     }
@@ -205,21 +203,6 @@ async function syncPurchases() {
             unit_cost: i.unit_cost,
           }))
         );
-
-        // Increment Supabase stock per item purchased (skip unlimited items)
-        for (const item of items) {
-          if (item.quantity <= 0) continue;
-          const { data: menuItem } = await supabase
-            .from('menu_items')
-            .select('stock')
-            .eq('name', item.item_name)
-            .maybeSingle();
-          if (menuItem && menuItem.stock !== -1) {
-            await supabase.from('menu_items')
-              .update({ stock: (menuItem.stock || 0) + item.quantity })
-              .eq('name', item.item_name);
-          }
-        }
       }
       markPurchaseSynced(purchase.id, data.id);
     }

@@ -1,4 +1,4 @@
-import React, { useState, useCallback } from 'react';
+import React, { useState, useCallback, useEffect } from 'react';
 import {
   View,
   Text,
@@ -12,6 +12,7 @@ import { Ionicons } from '@expo/vector-icons';
 import { getSummaryByDate, getOrderItems, voidOrder } from '../database/db';
 import { formatPeso } from '../utils/formatCurrency';
 import ReceiptModal from '../components/ReceiptModal';
+import { useAdmin } from '../context/AdminContext';
 
 function todayStr() {
   const d = new Date();
@@ -40,6 +41,7 @@ function StatCard({ label, value, color = '#e8521a' }) {
 }
 
 export default function SummaryScreen() {
+  const { syncTick } = useAdmin();
   const [selectedDate, setSelectedDate] = useState(todayStr());
   const [summary, setSummary] = useState({ totals: {}, bestSellers: [], orders: [] });
   const [receiptOrder, setReceiptOrder] = useState(null);
@@ -51,6 +53,8 @@ export default function SummaryScreen() {
       reload();
     }, [selectedDate])
   );
+
+  useEffect(() => { reload(); }, [syncTick]);
 
   function reload() {
     setSummary(getSummaryByDate(selectedDate));

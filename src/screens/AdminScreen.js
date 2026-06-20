@@ -1,17 +1,15 @@
-import React, { useState, useCallback } from 'react';
+import React, { useState, useCallback, useEffect } from 'react';
 import {
   View,
   Text,
   StyleSheet,
   TouchableOpacity,
   ScrollView,
-  FlatList,
   Alert,
 } from 'react-native';
 import { useFocusEffect } from '@react-navigation/native';
 import { Ionicons } from '@expo/vector-icons';
-import { getAdminStats, getDailySales, getRecentOrdersAdmin, getSettings, saveSetting } from '../database/db';
-import { syncPending } from '../services/syncService';
+import { getAdminStats, getDailySales, getRecentOrdersAdmin, getSettings } from '../database/db';
 import { isSupabaseConfigured } from '../config/supabase';
 import { formatPeso } from '../utils/formatCurrency';
 import { useAdmin } from '../context/AdminContext';
@@ -23,7 +21,9 @@ const RANGES = [
 ];
 
 export default function AdminScreen() {
-  const { setIsAdminUnlocked } = useAdmin();
+  const { setIsAdminUnlocked, syncTick } = useAdmin();
+
+  useEffect(() => { if (isUnlocked) loadData(); }, [syncTick]);
   const [isUnlocked, setIsUnlocked]   = useState(false);
   const [pinInput, setPinInput]       = useState('');
   const [pinError, setPinError]       = useState(false);
@@ -31,18 +31,11 @@ export default function AdminScreen() {
   const [dailySales, setDailySales]   = useState([]);
   const [recentOrders, setRecentOrders] = useState([]);
   const [range, setRange]             = useState('30');
-  const [isSyncing, setIsSyncing]     = useState(false);
 
-  // Lock when navigating away
   useFocusEffect(
     useCallback(() => {
-      return () => {
-        setIsUnlocked(false);
-        setIsAdminUnlocked(false);
-        setPinInput('');
-        setPinError(false);
-      };
-    }, [])
+      if (isUnlocked) loadData();
+    }, [isUnlocked]) // eslint-disable-line react-hooks/exhaustive-deps
   );
 
   function loadData(days = range) {
@@ -82,18 +75,6 @@ export default function AdminScreen() {
     setIsUnlocked(false);
     setIsAdminUnlocked(false);
     setPinInput('');
-  }
-
-  async function handleSync() {
-    if (!isSupabaseConfigured) {
-      Alert.alert('Not Configured', 'Set up your Supabase credentials in src/config/supabase.js first.');
-      return;
-    }
-    setIsSyncing(true);
-    await syncPending();
-    setIsSyncing(false);
-    loadData();
-    Alert.alert('Sync Complete', 'All records have been pushed to the cloud.');
   }
 
   function handleRangeChange(key) {
@@ -155,18 +136,9 @@ export default function AdminScreen() {
       <View style={styles.header}>
         <Text style={styles.headerTitle}>Admin Dashboard</Text>
         <View style={styles.headerActions}>
-          {isSupabaseConfigured && (
-            <TouchableOpacity style={styles.syncBtn} onPress={handleSync} disabled={isSyncing}>
-              <Ionicons
-                name={isSyncing ? 'sync' : 'cloud-upload-outline'}
-                size={18}
-                color="#fff"
-              />
-              <Text style={styles.syncBtnText}>{isSyncing ? 'Syncing…' : 'Sync'}</Text>
-            </TouchableOpacity>
-          )}
           <TouchableOpacity style={styles.lockBtn} onPress={handleLock}>
-            <Ionicons name="lock-closed-outline" size={18} color="#666" />
+            <Ionicons name="lock-closed-outline" size={16} color="#666" />
+            <Text style={styles.lockBtnText}>Lock</Text>
           </TouchableOpacity>
         </View>
       </View>
@@ -175,12 +147,12 @@ export default function AdminScreen() {
 
         {/* Sync status banner */}
         {isSupabaseConfigured && stats?.pendingSync > 0 && (
-          <TouchableOpacity style={styles.pendingBanner} onPress={handleSync}>
+          <View style={styles.pendingBanner}>
             <Ionicons name="cloud-offline-outline" size={16} color="#fff" />
             <Text style={styles.pendingBannerText}>
-              {stats.pendingSync} record{stats.pendingSync !== 1 ? 's' : ''} pending sync — Tap to sync now
+              {stats.pendingSync} record{stats.pendingSync !== 1 ? 's' : ''} pending sync
             </Text>
-          </TouchableOpacity>
+          </View>
         )}
         {isSupabaseConfigured && stats?.pendingSync === 0 && (
           <View style={styles.syncedBanner}>
@@ -387,10 +359,17 @@ const styles = StyleSheet.create({
   },
   syncBtnText: { color: '#fff', fontWeight: '600', fontSize: 13 },
   lockBtn: {
-    padding: 8,
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 5,
+    paddingHorizontal: 12,
+    paddingVertical: 7,
     borderRadius: 8,
     backgroundColor: '#f4f4f4',
+    borderWidth: 1,
+    borderColor: '#ddd',
   },
+  lockBtnText: { fontSize: 13, fontWeight: '600', color: '#666' },
 
   pendingBanner: {
     flexDirection: 'row',

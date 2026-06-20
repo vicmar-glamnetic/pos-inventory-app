@@ -1,4 +1,4 @@
-import React, { useState, useCallback } from 'react';
+import React, { useState, useCallback, useEffect } from 'react';
 import {
   View,
   Text,
@@ -22,6 +22,7 @@ import {
 } from '../database/db';
 import { pushStockRequest } from '../services/syncService';
 import { supabase } from '../config/supabase';
+import { useAdmin } from '../context/AdminContext';
 import { formatPeso } from '../utils/formatCurrency';
 
 const LOW_STOCK_THRESHOLD = 5;
@@ -320,7 +321,13 @@ function PurchaseDetailModal({ visible, purchase, items, onClose }) {
 // ── Main Screen ───────────────────────────────────────────────────────────────
 
 export default function InventoryScreen() {
-  const [view, setView] = useState('stock'); // 'stock' | 'purchases'
+  const { isAdminUnlocked, syncTick } = useAdmin();
+
+  useEffect(() => {
+    reload();
+    loadPendingRequests();
+  }, [syncTick]);
+  const [view, setView] = useState('stock'); // 'stock' | 'pending' | 'purchases'
   const [items, setItems] = useState([]);
   const [purchases, setPurchases] = useState([]);
   const [search, setSearch] = useState('');
@@ -365,14 +372,11 @@ export default function InventoryScreen() {
   const lowCount = items.filter((i) => i.stock > 0 && i.stock < LOW_STOCK_THRESHOLD).length;
 
   async function handleEditStockSave(item, newStock, isUnlimited) {
-    const requestedStock = isUnlimited ? -1 : newStock;
-    const ok = await pushStockRequest(item.name, requestedStock);
+    const stock = isUnlimited ? -1 : newStock;
+    const ok = await pushStockRequest(item.name, stock);
     if (ok) {
-      setPendingMap(prev => ({ ...prev, [item.name]: requestedStock }));
-      Alert.alert(
-        'Request Sent',
-        `Stock change request for "${item.name}" has been sent to the web admin for approval.`
-      );
+      setPendingMap(prev => ({ ...prev, [item.name]: stock }));
+      Alert.alert('Request Sent', `Stock change for "${item.name}" is awaiting web admin approval.`);
     } else {
       Alert.alert('Error', 'Could not send request. Check your internet connection.');
     }
@@ -420,6 +424,22 @@ export default function InventoryScreen() {
           <Ionicons name="cube-outline" size={15} color={view === 'stock' ? '#e8521a' : '#999'} />
           <Text style={[styles.switchTabText, view === 'stock' && styles.switchTabTextActive]}>Stock</Text>
         </TouchableOpacity>
+        {isAdminUnlocked && (
+          <TouchableOpacity
+            style={[styles.switchTab, view === 'pending' && styles.switchTabActive]}
+            onPress={() => setView('pending')}
+          >
+            <View style={{ flexDirection: 'row', alignItems: 'center', gap: 4 }}>
+              <Ionicons name="time-outline" size={15} color={view === 'pending' ? '#e8521a' : '#999'} />
+              <Text style={[styles.switchTabText, view === 'pending' && styles.switchTabTextActive]}>Pending</Text>
+              {Object.keys(pendingMap).length > 0 && (
+                <View style={styles.pendingBadge}>
+                  <Text style={styles.pendingBadgeText}>{Object.keys(pendingMap).length}</Text>
+                </View>
+              )}
+            </View>
+          </TouchableOpacity>
+        )}
         <TouchableOpacity
           style={[styles.switchTab, view === 'purchases' && styles.switchTabActive]}
           onPress={() => setView('purchases')}
@@ -459,11 +479,8 @@ export default function InventoryScreen() {
             data={stockFiltered}
             keyExtractor={(item) => String(item.id)}
             contentContainerStyle={styles.list}
-            renderItem={({ item }) => {
-              const hasPending = pendingMap[item.name] != null;
-              const pendingStock = pendingMap[item.name];
-              return (
-              <View style={[styles.stockRow, item.stock === 0 && !hasPending && styles.stockRowOut, hasPending && styles.stockRowPending]}>
+            renderItem={({ item }) => (
+              <View style={[styles.stockRow, item.stock === 0 && styles.stockRowOut]}>
                 <View style={styles.stockCircle}>
                   <Text style={[styles.stockNum, { color: stockColor(item) }]}>
                     {item.stock < 0 ? '∞' : String(item.stock)}
@@ -474,15 +491,10 @@ export default function InventoryScreen() {
                   <Text style={styles.itemName}>{item.name}</Text>
                   <Text style={styles.itemMeta}>
                     {item.category}  ·  {formatPeso(item.price)}
-                    {item.stock === 0 && !hasPending ? <Text style={styles.tagOut}>  SOLD OUT</Text>
+                    {item.stock === 0 ? <Text style={styles.tagOut}>  SOLD OUT</Text>
                       : item.stock > 0 && item.stock < LOW_STOCK_THRESHOLD
                       ? <Text style={styles.tagLow}>  LOW</Text> : null}
                   </Text>
-                  {hasPending && (
-                    <Text style={styles.tagPending}>
-                      Pending approval: {pendingStock === -1 ? '∞' : pendingStock} requested
-                    </Text>
-                  )}
                   {!!item.last_restocked_at && (
                     <Text style={styles.restockedAt}>
                       Restocked {formatRestockedAt(item.last_restocked_at)}
@@ -493,8 +505,7 @@ export default function InventoryScreen() {
                   <Ionicons name="pencil-outline" size={18} color="#e8521a" />
                 </TouchableOpacity>
               </View>
-              );
-            }}
+            )}
             ListEmptyComponent={
               <Text style={styles.empty}>
                 {stockFilter === 'low' ? 'No low stock items.' : stockFilter === 'out' ? 'No sold out items.' : 'No items found.'}
@@ -502,6 +513,47 @@ export default function InventoryScreen() {
             }
           />
         </>
+      )}
+
+      {/* ── PENDING VIEW ───────────────────────────────────────────────── */}
+      {view === 'pending' && (
+        <FlatList
+          data={Object.entries(pendingMap).map(([name, stock]) => ({
+            name,
+            requestedStock: stock,
+            currentItem: items.find(i => i.name === name),
+          }))}
+          keyExtractor={(item) => item.name}
+          contentContainerStyle={styles.list}
+          renderItem={({ item }) => {
+            const current = item.currentItem;
+            const currentStock = current ? (current.stock < 0 ? '∞' : String(current.stock)) : '—';
+            const requested = item.requestedStock === -1 ? '∞' : String(item.requestedStock);
+            return (
+              <View style={styles.pendingRow}>
+                <View style={styles.pendingIcon}>
+                  <Ionicons name="time-outline" size={20} color="#d97706" />
+                </View>
+                <View style={styles.info}>
+                  <Text style={styles.itemName}>{item.name}</Text>
+                  <Text style={styles.pendingMeta}>
+                    Current: <Text style={{ fontWeight: '700', color: '#555' }}>{currentStock}</Text>
+                    {'  →  '}
+                    Requested: <Text style={{ fontWeight: '700', color: '#d97706' }}>{requested}</Text>
+                  </Text>
+                  <Text style={styles.pendingStatus}>Awaiting web admin approval</Text>
+                </View>
+              </View>
+            );
+          }}
+          ListEmptyComponent={
+            <View style={styles.emptyPurchase}>
+              <Ionicons name="checkmark-circle-outline" size={48} color="#ddd" />
+              <Text style={styles.empty}>No pending requests.</Text>
+              <Text style={styles.emptySub}>Stock changes you request will appear here.</Text>
+            </View>
+          }
+        />
       )}
 
       {/* ── PURCHASES VIEW ─────────────────────────────────────────────── */}
@@ -639,7 +691,41 @@ const styles = StyleSheet.create({
     elevation: 2,
   },
   stockRowOut: { borderLeftWidth: 4, borderLeftColor: '#ef5350' },
-  stockRowPending: { borderLeftWidth: 4, borderLeftColor: '#f59e0b' },
+  pendingBadge: {
+    backgroundColor: '#e8521a',
+    borderRadius: 8,
+    minWidth: 16,
+    height: 16,
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingHorizontal: 4,
+  },
+  pendingBadgeText: { color: '#fff', fontSize: 10, fontWeight: '700' },
+  pendingRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: '#fffbeb',
+    borderRadius: 12,
+    padding: 12,
+    borderWidth: 1,
+    borderColor: '#fde68a',
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 1 },
+    shadowOpacity: 0.04,
+    shadowRadius: 2,
+    elevation: 1,
+  },
+  pendingIcon: {
+    width: 40,
+    height: 40,
+    borderRadius: 20,
+    backgroundColor: '#fef3c7',
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginRight: 12,
+  },
+  pendingMeta: { fontSize: 12, color: '#777', marginTop: 3 },
+  pendingStatus: { fontSize: 11, color: '#d97706', fontWeight: '600', marginTop: 3 },
   stockCircle: {
     width: 52,
     height: 52,
@@ -656,7 +742,6 @@ const styles = StyleSheet.create({
   itemMeta: { fontSize: 12, color: '#999', marginTop: 3 },
   tagOut: { color: '#c62828', fontWeight: '700' },
   tagLow: { color: '#e65100', fontWeight: '700' },
-  tagPending: { fontSize: 11, color: '#d97706', fontWeight: '700', marginTop: 2 },
   restockedAt: { fontSize: 11, color: '#aaa', marginTop: 2 },
   editBtn: {
     padding: 8,

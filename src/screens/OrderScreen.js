@@ -1,4 +1,4 @@
-import React, { useState, useCallback, useMemo } from 'react';
+import React, { useState, useCallback, useMemo, useEffect } from 'react';
 import {
   View,
   Text,
@@ -8,6 +8,7 @@ import {
   ScrollView,
   TextInput,
   Alert,
+  Modal,
   KeyboardAvoidingView,
   Platform,
   useWindowDimensions,
@@ -17,8 +18,127 @@ import { Ionicons } from '@expo/vector-icons';
 import MenuItemCard from '../components/MenuItemCard';
 import ReceiptModal from '../components/ReceiptModal';
 import { getAllMenuItems, saveOrder, getOrderItems, getCategories } from '../database/db';
-import { syncPending } from '../services/syncService';
+import { syncPending, pushStockDecrement } from '../services/syncService';
+import { useAdmin } from '../context/AdminContext';
 import { formatPeso } from '../utils/formatCurrency';
+
+function CashNumPad({ visible, total, initialValue, onConfirm, onClose }) {
+  const [input, setInput] = useState('');
+
+  React.useEffect(() => {
+    if (visible) setInput(initialValue || '');
+  }, [visible]);
+
+  function press(key) {
+    if (key === 'back') {
+      setInput(p => p.slice(0, -1));
+      return;
+    }
+    if (key === '.') {
+      if (!input.includes('.')) setInput(p => p + '.');
+      return;
+    }
+    const parts = input.split('.');
+    if (parts[1] !== undefined && parts[1].length >= 2) return;
+    if (input === '0' && key !== '.') { setInput(key); return; }
+    setInput(p => p + key);
+  }
+
+  const num = parseFloat(input) || 0;
+  const change = num - total;
+
+  const presets = [];
+  if (total > 0) {
+    presets.push(total);
+    const r50 = Math.ceil(total / 50) * 50;
+    if (r50 > total) presets.push(r50);
+    const r100 = Math.ceil(total / 100) * 100;
+    if (r100 > r50) presets.push(r100);
+    if (total < 500) presets.push(500);
+    if (total < 1000) presets.push(1000);
+  }
+  const uniquePresets = [...new Set(presets)].slice(0, 5);
+
+  return (
+    <Modal visible={visible} transparent animationType="fade" onRequestClose={onClose}>
+      <View style={npStyles.overlay}>
+        <View style={npStyles.card}>
+          <View style={npStyles.header}>
+            <Text style={npStyles.title}>Cash Tendered</Text>
+            <TouchableOpacity onPress={onClose} style={npStyles.closeBtn}>
+              <Ionicons name="close" size={22} color="#666" />
+            </TouchableOpacity>
+          </View>
+
+          <Text style={npStyles.display}>{input ? `₱${input}` : '₱0'}</Text>
+
+          {num >= total && total > 0 ? (
+            <View style={npStyles.changeBadge}>
+              <Text style={npStyles.changeLabel}>Change</Text>
+              <Text style={npStyles.changeAmt}>{formatPeso(change)}</Text>
+            </View>
+          ) : num > 0 && num < total && total > 0 ? (
+            <Text style={npStyles.shortfall}>Short by {formatPeso(total - num)}</Text>
+          ) : (
+            <Text style={npStyles.totalHint}>Total due: {formatPeso(total)}</Text>
+          )}
+
+          <ScrollView horizontal showsHorizontalScrollIndicator={false} style={npStyles.presetRow} contentContainerStyle={{ gap: 8, paddingHorizontal: 2 }}>
+            {uniquePresets.map(p => (
+              <TouchableOpacity key={p} style={[npStyles.preset, p === total && npStyles.presetExact]} onPress={() => setInput(String(p))}>
+                <Text style={[npStyles.presetText, p === total && npStyles.presetExactText]}>{p === total ? 'Exact' : formatPeso(p)}</Text>
+              </TouchableOpacity>
+            ))}
+          </ScrollView>
+
+          <View style={npStyles.pad}>
+            {['1','2','3','4','5','6','7','8','9','.','0','back'].map(k => (
+              <TouchableOpacity key={k} style={npStyles.key} onPress={() => press(k)}>
+                {k === 'back'
+                  ? <Ionicons name="backspace-outline" size={26} color="#333" />
+                  : <Text style={npStyles.keyText}>{k}</Text>}
+              </TouchableOpacity>
+            ))}
+          </View>
+
+          <TouchableOpacity
+            style={[npStyles.confirmBtn, num > 0 && num < total && npStyles.confirmBtnWarn]}
+            onPress={() => { onConfirm(input); onClose(); }}
+          >
+            <Text style={npStyles.confirmText}>
+              {num >= total || total === 0 ? 'Confirm' : `Confirm anyway`}
+            </Text>
+          </TouchableOpacity>
+        </View>
+      </View>
+    </Modal>
+  );
+}
+
+const npStyles = StyleSheet.create({
+  overlay:    { flex: 1, backgroundColor: 'rgba(0,0,0,0.45)', alignItems: 'center', justifyContent: 'center' },
+  card:       { backgroundColor: '#fff', borderRadius: 18, padding: 20, width: 320, shadowColor: '#000', shadowOpacity: 0.2, shadowRadius: 16, elevation: 10 },
+  header:     { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 12 },
+  title:      { fontSize: 16, fontWeight: '700', color: '#333' },
+  closeBtn:   { padding: 2 },
+  display:    { fontSize: 36, fontWeight: '800', color: '#e8521a', textAlign: 'center', marginBottom: 8, letterSpacing: 0.5 },
+  changeBadge:{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', backgroundColor: '#e8f5e9', borderRadius: 8, paddingHorizontal: 14, paddingVertical: 8, marginBottom: 10, borderWidth: 1, borderColor: '#c8e6c9' },
+  changeLabel:{ fontSize: 13, color: '#2e7d32', fontWeight: '600' },
+  changeAmt:  { fontSize: 17, color: '#2e7d32', fontWeight: '800' },
+  shortfall:  { fontSize: 13, color: '#c62828', fontWeight: '600', textAlign: 'center', marginBottom: 10 },
+  totalHint:  { fontSize: 13, color: '#aaa', textAlign: 'center', marginBottom: 10 },
+  presetRow:  { marginBottom: 12 },
+  preset:     { paddingHorizontal: 14, paddingVertical: 7, borderRadius: 20, backgroundColor: '#f0f0f0', borderWidth: 1, borderColor: '#ddd' },
+  presetExact:{ backgroundColor: '#e8521a', borderColor: '#e8521a' },
+  presetText: { fontSize: 13, color: '#444', fontWeight: '600' },
+  presetExactText: { color: '#fff' },
+  pad:        { flexDirection: 'row', flexWrap: 'wrap', gap: 8, marginBottom: 14 },
+  key:        { width: '30%', aspectRatio: 1.8, alignItems: 'center', justifyContent: 'center', backgroundColor: '#f4f4f4', borderRadius: 10, borderWidth: 1, borderColor: '#e8e8e8' },
+  keyText:    { fontSize: 22, fontWeight: '600', color: '#222' },
+  confirmBtn: { backgroundColor: '#e8521a', borderRadius: 12, paddingVertical: 14, alignItems: 'center' },
+  confirmBtnWarn: { backgroundColor: '#888' },
+  confirmText:{ color: '#fff', fontSize: 16, fontWeight: '700' },
+});
 
 const DISCOUNT_TYPES = [
   { key: 'none',  label: 'None' },
@@ -42,9 +162,12 @@ export default function OrderScreen() {
   const [tableName, setTableName]         = useState('');
   const [discountType, setDiscountType]   = useState('none');
   const [discountValue, setDiscountValue] = useState('');
+  const [numPadVisible, setNumPadVisible]   = useState(false);
   const [receiptVisible, setReceiptVisible] = useState(false);
   const [lastOrder, setLastOrder]         = useState(null);
   const [lastOrderItems, setLastOrderItems] = useState([]);
+
+  const { syncTick } = useAdmin();
 
   useFocusEffect(
     useCallback(() => {
@@ -52,6 +175,11 @@ export default function OrderScreen() {
       setCategories(getCategories());
     }, [])
   );
+
+  useEffect(() => {
+    setMenuItems(getAllMenuItems());
+    setCategories(getCategories());
+  }, [syncTick]);
 
   const categoryColorMap = useMemo(() => {
     const map = {};
@@ -123,7 +251,7 @@ export default function OrderScreen() {
     if (key !== 'pct' && key !== 'fixed') setDiscountValue('');
   }
 
-  function handleConfirmOrder() {
+  async function handleConfirmOrder() {
     if (cartItems.length === 0) {
       Alert.alert('Empty Cart', 'Please add items before placing an order.');
       return;
@@ -147,7 +275,10 @@ export default function OrderScreen() {
     clearCart();
     setMenuItems(getAllMenuItems());
     setCategories(getCategories());
-    syncPending(); // push to Supabase immediately after order
+    // Push decremented stock to Supabase BEFORE sync so pullMenuItemUpdates
+    // reads back the correct (already-decremented) value instead of restoring the old one.
+    await pushStockDecrement(cartItems);
+    syncPending();
   }
 
   // ── Category bar (same in both layouts) ─────────────────────────────────────
@@ -329,14 +460,11 @@ export default function OrderScreen() {
                 {/* Payment */}
                 <View style={styles.paySection}>
                   <Text style={styles.payLabel}>Cash Tendered</Text>
-                  <TextInput
-                    style={styles.tenderedInput}
-                    placeholder="0.00"
-                    placeholderTextColor="#bbb"
-                    keyboardType="numeric"
-                    value={tendered}
-                    onChangeText={setTendered}
-                  />
+                  <TouchableOpacity style={styles.tenderedInput} onPress={() => setNumPadVisible(true)}>
+                    <Text style={[styles.tenderedInputText, !tendered && { color: '#bbb' }]}>
+                      {tendered ? `₱${tendered}` : 'Tap to enter amount'}
+                    </Text>
+                  </TouchableOpacity>
                   {tenderedNum >= total && total > 0 && (
                     <View style={styles.changeBadge}>
                       <Text style={styles.changeLabel}>Change</Text>
@@ -381,6 +509,13 @@ export default function OrderScreen() {
           </View>
         </View>
 
+        <CashNumPad
+          visible={numPadVisible}
+          total={total}
+          initialValue={tendered}
+          onConfirm={setTendered}
+          onClose={() => setNumPadVisible(false)}
+        />
         <ReceiptModal
           visible={receiptVisible}
           order={lastOrder}
@@ -450,14 +585,11 @@ export default function OrderScreen() {
 
           <View style={styles.paySection}>
             <Text style={styles.payLabel}>Cash Tendered</Text>
-            <TextInput
-              style={styles.tenderedInput}
-              placeholder="0.00"
-              placeholderTextColor="#bbb"
-              keyboardType="numeric"
-              value={tendered}
-              onChangeText={setTendered}
-            />
+            <TouchableOpacity style={styles.tenderedInput} onPress={() => setNumPadVisible(true)}>
+              <Text style={[styles.tenderedInputText, !tendered && { color: '#bbb' }]}>
+                {tendered ? `₱${tendered}` : 'Tap to enter amount'}
+              </Text>
+            </TouchableOpacity>
             {tenderedNum >= total && total > 0 && (
               <View style={styles.changeBadge}>
                 <Text style={styles.changeLabel}>Change</Text>
@@ -489,6 +621,13 @@ export default function OrderScreen() {
         </View>
       )}
 
+      <CashNumPad
+        visible={numPadVisible}
+        total={total}
+        initialValue={tendered}
+        onConfirm={setTendered}
+        onClose={() => setNumPadVisible(false)}
+      />
       <ReceiptModal
         visible={receiptVisible}
         order={lastOrder}
@@ -667,10 +806,13 @@ const styles = StyleSheet.create({
     borderColor: '#e8521a',
     borderRadius: 8,
     paddingHorizontal: 12,
-    paddingVertical: 9,
+    paddingVertical: 11,
+    backgroundColor: '#fff',
+    justifyContent: 'center',
+  },
+  tenderedInputText: {
     fontSize: 18,
     fontWeight: '600',
-    backgroundColor: '#fff',
     color: '#222',
   },
   changeBadge: {
