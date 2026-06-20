@@ -6,6 +6,7 @@ import { Ionicons } from '@expo/vector-icons';
 
 import { initDatabase } from './src/database/db';
 import { startSync, stopSync } from './src/services/syncService';
+import { AdminProvider, useAdmin } from './src/context/AdminContext';
 import OrderScreen from './src/screens/OrderScreen';
 import MenuScreen from './src/screens/MenuScreen';
 import InventoryScreen from './src/screens/InventoryScreen';
@@ -25,8 +26,38 @@ const TAB_ICONS = {
   Admin:     ['shield-checkmark',     'shield-checkmark-outline'],
 };
 
+function Tabs() {
+  const { isAdminUnlocked } = useAdmin();
+
+  return (
+    <Tab.Navigator
+      screenOptions={({ route }) => ({
+        headerStyle: { backgroundColor: BRAND },
+        headerTintColor: '#fff',
+        headerTitleStyle: { fontWeight: '700' },
+        tabBarActiveTintColor: BRAND,
+        tabBarInactiveTintColor: '#aaa',
+        tabBarStyle: { height: 60, paddingBottom: 6 },
+        tabBarLabelStyle: { fontSize: 10, fontWeight: '600' },
+        tabBarIcon: ({ color, size, focused }) => {
+          const [active, inactive] = TAB_ICONS[route.name] || ['apps', 'apps-outline'];
+          return <Ionicons name={focused ? active : inactive} size={size} color={color} />;
+        },
+      })}
+    >
+      <Tab.Screen name="Order"    component={OrderScreen}     options={{ title: 'Place Order',      tabBarLabel: 'Order' }} />
+      <Tab.Screen name="Menu"     component={MenuScreen}      options={{ title: 'Menu / Products',  tabBarLabel: 'Products' }} />
+      {isAdminUnlocked && (
+        <Tab.Screen name="Inventory" component={InventoryScreen} options={{ title: 'Inventory', tabBarLabel: 'Inventory' }} />
+      )}
+      <Tab.Screen name="Summary"  component={SummaryScreen}   options={{ title: 'Sales Summary',    tabBarLabel: 'Summary' }} />
+      <Tab.Screen name="Settings" component={SettingsScreen}  options={{ title: 'Store Settings',   tabBarLabel: 'Settings' }} />
+      <Tab.Screen name="Admin"    component={AdminScreen}     options={{ title: 'Admin Dashboard',  tabBarLabel: 'Admin' }} />
+    </Tab.Navigator>
+  );
+}
+
 export default function App() {
-  // Runs synchronously before any child screen mounts — DB is ready
   useState(() => { initDatabase(); });
 
   useEffect(() => {
@@ -35,54 +66,11 @@ export default function App() {
   }, []);
 
   return (
-    <NavigationContainer>
-      <StatusBar style="dark" />
-      <Tab.Navigator
-        screenOptions={({ route }) => ({
-          headerStyle: { backgroundColor: BRAND },
-          headerTintColor: '#fff',
-          headerTitleStyle: { fontWeight: '700' },
-          tabBarActiveTintColor: BRAND,
-          tabBarInactiveTintColor: '#aaa',
-          tabBarStyle: { height: 60, paddingBottom: 6 },
-          tabBarLabelStyle: { fontSize: 10, fontWeight: '600' },
-          tabBarIcon: ({ color, size, focused }) => {
-            const [active, inactive] = TAB_ICONS[route.name] || ['apps', 'apps-outline'];
-            return <Ionicons name={focused ? active : inactive} size={size} color={color} />;
-          },
-        })}
-      >
-        <Tab.Screen
-          name="Order"
-          component={OrderScreen}
-          options={{ title: 'Place Order', tabBarLabel: 'Order' }}
-        />
-        <Tab.Screen
-          name="Menu"
-          component={MenuScreen}
-          options={{ title: 'Menu / Products', tabBarLabel: 'Products' }}
-        />
-        <Tab.Screen
-          name="Inventory"
-          component={InventoryScreen}
-          options={{ title: 'Inventory', tabBarLabel: 'Inventory' }}
-        />
-        <Tab.Screen
-          name="Summary"
-          component={SummaryScreen}
-          options={{ title: 'Sales Summary', tabBarLabel: 'Summary' }}
-        />
-        <Tab.Screen
-          name="Settings"
-          component={SettingsScreen}
-          options={{ title: 'Store Settings', tabBarLabel: 'Settings' }}
-        />
-        <Tab.Screen
-          name="Admin"
-          component={AdminScreen}
-          options={{ title: 'Admin Dashboard', tabBarLabel: 'Admin' }}
-        />
-      </Tab.Navigator>
-    </NavigationContainer>
+    <AdminProvider>
+      <NavigationContainer>
+        <StatusBar style="dark" />
+        <Tabs />
+      </NavigationContainer>
+    </AdminProvider>
   );
 }

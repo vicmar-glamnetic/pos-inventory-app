@@ -14,6 +14,7 @@ import { getAdminStats, getDailySales, getRecentOrdersAdmin, getSettings, saveSe
 import { syncPending } from '../services/syncService';
 import { isSupabaseConfigured } from '../config/supabase';
 import { formatPeso } from '../utils/formatCurrency';
+import { useAdmin } from '../context/AdminContext';
 
 const RANGES = [
   { key: '7',  label: '7 Days' },
@@ -22,6 +23,7 @@ const RANGES = [
 ];
 
 export default function AdminScreen() {
+  const { setIsAdminUnlocked } = useAdmin();
   const [isUnlocked, setIsUnlocked]   = useState(false);
   const [pinInput, setPinInput]       = useState('');
   const [pinError, setPinError]       = useState(false);
@@ -36,6 +38,7 @@ export default function AdminScreen() {
     useCallback(() => {
       return () => {
         setIsUnlocked(false);
+        setIsAdminUnlocked(false);
         setPinInput('');
         setPinError(false);
       };
@@ -63,6 +66,7 @@ export default function AdminScreen() {
       const savedPin = settings.admin_pin || '1234';
       if (next === savedPin) {
         setIsUnlocked(true);
+        setIsAdminUnlocked(true);
         loadData();
       } else {
         setPinError(true);
@@ -76,6 +80,7 @@ export default function AdminScreen() {
 
   function handleLock() {
     setIsUnlocked(false);
+    setIsAdminUnlocked(false);
     setPinInput('');
   }
 
