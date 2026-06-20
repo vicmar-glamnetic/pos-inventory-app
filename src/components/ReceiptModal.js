@@ -41,42 +41,51 @@ function buildHtml(order, items, settings) {
   return `
     <html><head><meta charset="utf-8">
     <style>
-      body { font-family: monospace; font-size: 13px; padding: 20px; max-width: 380px; margin: auto; }
-      h2 { text-align:center; color:#e8521a; margin-bottom:4px; }
-      p.sub { text-align:center; color:#666; margin:0 0 4px; font-size:11px; }
+      @page { size: 80mm auto; margin: 4mm; }
+      * { box-sizing: border-box; }
+      body { font-family: Arial, 'Noto Sans', sans-serif; font-size: 11px; width: 72mm; margin: 0; padding: 0; }
+      h2 { text-align:center; color:#e8521a; margin:0 0 2px; font-size:14px; }
+      p.sub { text-align:center; color:#666; margin:0 0 2px; font-size:10px; }
       table { width:100%; border-collapse:collapse; }
-      th { border-bottom:1px solid #ccc; padding:4px 2px; font-size:11px; }
-      td { padding:4px 2px; }
+      th { border-bottom:1px solid #ccc; padding:3px 2px; font-size:10px; }
+      td { padding:3px 2px; font-size:11px; }
       .subtotal-row td { border-top:1px solid #ddd; color:#888; }
-      .total-row td { border-top:1px solid #333; font-weight:bold; font-size:15px; }
-      .footer { text-align:center; margin-top:20px; color:#999; font-size:11px; }
+      .total-row td { border-top:2px solid #333; font-weight:bold; font-size:13px; }
+      .footer { text-align:center; margin-top:12px; color:#999; font-size:10px; }
     </style>
     </head><body>
     <h2>${settings.store_name || 'My Store'}</h2>
     ${settings.store_address ? `<p class="sub">${settings.store_address}</p>` : ''}
     ${settings.store_phone ? `<p class="sub">Tel: ${settings.store_phone}</p>` : ''}
-    <p class="sub">${dateStr}</p>
-    ${order.table_name ? `<p class="sub"><strong>Table / Customer:</strong> ${order.table_name}</p>` : ''}
+    ${settings.store_tin ? `<p class="sub">TIN: ${settings.store_tin}</p>` : ''}
+    <p class="sub" style="border-top:1px dashed #ccc;margin-top:4px;padding-top:4px;">${dateStr}</p>
+    <p class="sub">OR No.: ${String(order.id).padStart(6, '0')}</p>
+    ${order.table_name ? `<p class="sub">Customer/Table: ${order.table_name}</p>` : ''}
     <table>
-      <tr><th>Item</th><th>Qty</th><th>Price</th><th>Total</th></tr>
+      <tr><th style="text-align:left">Description</th><th>Qty</th><th style="text-align:right">Price</th><th style="text-align:right">Amount</th></tr>
       ${rows}
       ${
         order.discount_amount > 0
           ? `<tr class="subtotal-row">
-               <td colspan="3">Subtotal</td>
+               <td colspan="3" style="text-align:left">Subtotal</td>
                <td style="text-align:right">${formatPeso(order.subtotal || (order.total_amount + order.discount_amount))}</td>
              </tr>
              ${discountRow}`
           : ''
       }
       <tr class="total-row">
-        <td colspan="3">TOTAL</td>
+        <td colspan="3" style="text-align:left">TOTAL DUE</td>
         <td style="text-align:right">${formatPeso(order.total_amount)}</td>
       </tr>
     </table>
-    <p style="margin-top:12px">Cash: ${formatPeso(order.amount_tendered)}</p>
-    <p>Change: ${formatPeso(order.change_amount)}</p>
-    ${order.note ? `<p>Note: ${order.note}</p>` : ''}
+    <table style="margin-top:6px">
+      <tr><td>Cash Tendered</td><td style="text-align:right">${formatPeso(order.amount_tendered)}</td></tr>
+      <tr><td>Change</td><td style="text-align:right">${formatPeso(order.change_amount)}</td></tr>
+    </table>
+    ${order.note ? `<p style="margin-top:6px;font-size:10px">Note: ${order.note}</p>` : ''}
+    <p style="border-top:1px dashed #ccc;margin-top:8px;padding-top:6px;text-align:center;font-size:10px;">
+      This is not an Official Receipt.<br>For BIR-registered receipt, please ask the cashier.
+    </p>
     <p class="footer">${settings.receipt_footer || 'Thank you for your purchase!'}</p>
     </body></html>
   `;
@@ -93,7 +102,7 @@ export default function ReceiptModal({ visible, order, items, onClose, onVoid })
 
   async function handleShare() {
     try {
-      const { uri } = await Print.printToFileAsync({ html: buildHtml(order, items, settings) });
+      const { uri } = await Print.printToFileAsync({ html: buildHtml(order, items, settings), width: 227 }); // 80mm in points
       await Sharing.shareAsync(uri, { mimeType: 'application/pdf' });
     } catch (e) {
       console.warn('Share failed:', e);
@@ -102,7 +111,7 @@ export default function ReceiptModal({ visible, order, items, onClose, onVoid })
 
   async function handlePrint() {
     try {
-      await Print.printAsync({ html: buildHtml(order, items, settings) });
+      await Print.printAsync({ html: buildHtml(order, items, settings), width: 227 });
     } catch (e) {
       console.warn('Print failed:', e);
     }

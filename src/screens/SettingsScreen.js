@@ -17,7 +17,9 @@ import { Ionicons } from '@expo/vector-icons';
 import {
   getSettings, saveSetting,
   getCategories, addCategory, updateCategory, deleteCategory,
+  getPendingSyncCount,
 } from '../database/db';
+import { syncPending } from '../services/syncService';
 
 const BRAND = '#e8521a';
 
@@ -125,6 +127,7 @@ export default function SettingsScreen() {
   const [storeName, setStoreName] = useState('');
   const [storeAddress, setStoreAddress] = useState('');
   const [storePhone, setStorePhone] = useState('');
+  const [storeTin, setStoreTin] = useState('');
   const [receiptFooter, setReceiptFooter] = useState('');
   const [currencySymbol, setCurrencySymbol] = useState('₱');
   const [dirty, setDirty] = useState(false);
@@ -134,6 +137,11 @@ export default function SettingsScreen() {
   const [pinStep, setPinStep] = useState(null); // null | 'new' | 'confirm'
   const [pinInput, setPinInput] = useState('');
   const [newPinTemp, setNewPinTemp] = useState('');
+
+  // Sync
+  const [syncing, setSyncing] = useState(false);
+  const [syncMsg, setSyncMsg] = useState('');
+  const [pendingCount, setPendingCount] = useState(0);
 
   // Categories
   const [categories, setCategories] = useState([]);
@@ -151,11 +159,27 @@ export default function SettingsScreen() {
     setStoreName(s.store_name || '');
     setStoreAddress(s.store_address || '');
     setStorePhone(s.store_phone || '');
+    setStoreTin(s.store_tin || '');
     setReceiptFooter(s.receipt_footer || '');
     setCurrencySymbol(s.currency_symbol || '₱');
     setCurrentPin(s.admin_pin || '1234');
     setDirty(false);
     setCategories(getCategories());
+    setPendingCount(getPendingSyncCount());
+  }
+
+  async function handleSync() {
+    setSyncing(true);
+    setSyncMsg('');
+    try {
+      await syncPending();
+      setPendingCount(getPendingSyncCount());
+      setSyncMsg('Synced successfully.');
+    } catch {
+      setSyncMsg('Sync failed. Check your connection.');
+    } finally {
+      setSyncing(false);
+    }
   }
 
   // PIN change flow
@@ -196,6 +220,7 @@ export default function SettingsScreen() {
     saveSetting('store_name', storeName.trim());
     saveSetting('store_address', storeAddress.trim());
     saveSetting('store_phone', storePhone.trim());
+    saveSetting('store_tin', storeTin.trim());
     saveSetting('receipt_footer', receiptFooter.trim() || 'Thank you for your purchase!');
     saveSetting('currency_symbol', currencySymbol.trim() || '₱');
     setDirty(false);
@@ -245,6 +270,7 @@ export default function SettingsScreen() {
           <Field label="Address" value={storeAddress} onChangeText={mark(setStoreAddress)} placeholder="e.g. 123 Rizal St., Makati" />
           <View style={styles.cardDivider} />
           <Field label="Phone / Contact" value={storePhone} onChangeText={mark(setStorePhone)} placeholder="e.g. 0917-123-4567" />
+          <Field label="TIN (optional)" value={storeTin} onChangeText={mark(setStoreTin)} placeholder="e.g. 123-456-789-000" />
         </View>
 
         {/* Receipt */}
@@ -288,6 +314,34 @@ export default function SettingsScreen() {
           <Ionicons name="checkmark-circle" size={20} color="#fff" />
           <Text style={styles.saveBtnText}>Save Settings</Text>
         </TouchableOpacity>
+
+        {/* Cloud Sync */}
+        <SectionHeader title="Cloud Sync" />
+        <View style={styles.card}>
+          <View style={[styles.field, { flexDirection: 'row', alignItems: 'center' }]}>
+            <View style={{ flex: 1 }}>
+              <Text style={styles.fieldLabel}>Sync to Cloud</Text>
+              <Text style={{ fontSize: 13, color: '#999', marginTop: 2 }}>
+                {pendingCount > 0
+                  ? `${pendingCount} order${pendingCount !== 1 ? 's' : ''} pending upload`
+                  : 'All data synced'}
+              </Text>
+              {!!syncMsg && (
+                <Text style={{ fontSize: 12, marginTop: 3, color: syncMsg.includes('failed') ? '#e8521a' : '#3a7d44' }}>
+                  {syncMsg}
+                </Text>
+              )}
+            </View>
+            <TouchableOpacity
+              style={[styles.syncBtn, syncing && { opacity: 0.5 }]}
+              onPress={handleSync}
+              disabled={syncing}
+            >
+              <Ionicons name={syncing ? 'sync' : 'cloud-upload-outline'} size={16} color="#1a6fb5" />
+              <Text style={styles.syncBtnText}>{syncing ? 'Syncing…' : 'Sync Now'}</Text>
+            </TouchableOpacity>
+          </View>
+        </View>
 
         {/* Admin Security */}
         <SectionHeader title="Admin Security" />
@@ -511,6 +565,12 @@ const styles = StyleSheet.create({
   catEmpty: { textAlign: 'center', color: '#bbb', paddingVertical: 20, fontSize: 14 },
   catHint: { fontSize: 11, color: '#bbb', marginTop: 6, marginLeft: 4 },
   // PIN change
+  syncBtn: {
+    flexDirection: 'row', alignItems: 'center', gap: 4,
+    borderWidth: 1.5, borderColor: '#1a6fb5', borderRadius: 8,
+    paddingHorizontal: 10, paddingVertical: 7,
+  },
+  syncBtnText: { color: '#1a6fb5', fontWeight: '600', fontSize: 13 },
   changePinBtn: {
     flexDirection: 'row', alignItems: 'center', gap: 4,
     borderWidth: 1.5, borderColor: '#1a6fb5', borderRadius: 8,

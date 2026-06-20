@@ -99,6 +99,7 @@ export function initDatabase() {
     ['store_name', 'My Store'],
     ['store_address', ''],
     ['store_phone', ''],
+    ['store_tin', ''],
     ['receipt_footer', 'Thank you for your purchase!'],
     ['currency_symbol', '₱'],
     ['admin_pin', '1234'],
@@ -193,8 +194,9 @@ export function deleteCategory(id) {
 // ── Menu Items ────────────────────────────────────────────────────────────────
 
 export function getAllMenuItems() {
+  // stock = -1 means unlimited, stock > 0 means in stock, stock = 0 means sold out (hidden from order screen)
   return getDatabase().getAllSync(
-    'SELECT * FROM menu_items WHERE is_available = 1 ORDER BY category, name'
+    'SELECT * FROM menu_items WHERE is_available = 1 AND stock != 0 ORDER BY category, name'
   );
 }
 
