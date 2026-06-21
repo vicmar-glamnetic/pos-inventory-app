@@ -113,7 +113,7 @@ async function syncMenuItems() {
     .in('local_id', localIds);
   const existingIds = new Set((existing || []).map(r => r.local_id));
 
-  // Insert brand-new items with stock=null so web admin sets the initial stock
+  // Insert brand-new items with their actual stock (so web shows correct state immediately)
   const newItems = items.filter(i => !existingIds.has(i.id));
   if (newItems.length > 0) {
     await supabase.from('menu_items').insert(newItems.map(i => ({
@@ -121,8 +121,8 @@ async function syncMenuItems() {
       name: i.name,
       price: i.price,
       category: i.category || '',
-      stock: null,
-      is_available: true,
+      stock: i.stock,
+      is_available: i.stock !== 0,
     })));
   }
 
