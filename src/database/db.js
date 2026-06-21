@@ -512,3 +512,15 @@ export function getRecentOrdersAdmin(limit = 50) {
     LIMIT ?
   `, [limit]);
 }
+
+export function resetAllData() {
+  const database = getDatabase();
+  database.execSync(`
+    DELETE FROM order_items;
+    DELETE FROM orders;
+    DELETE FROM purchase_items;
+    DELETE FROM purchases;
+    DELETE FROM menu_items;
+    DELETE FROM sqlite_sequence WHERE name IN ('order_items','orders','purchase_items','purchases','menu_items');
+  `);
+}

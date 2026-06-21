@@ -9,7 +9,7 @@ import {
 } from 'react-native';
 import { useFocusEffect } from '@react-navigation/native';
 import { Ionicons } from '@expo/vector-icons';
-import { getAdminStats, getDailySales, getRecentOrdersAdmin, getSettings } from '../database/db';
+import { getAdminStats, getDailySales, getRecentOrdersAdmin, getSettings, resetAllData } from '../database/db';
 import { isSupabaseConfigured } from '../config/supabase';
 import { formatPeso } from '../utils/formatCurrency';
 import { useAdmin } from '../context/AdminContext';
@@ -69,6 +69,25 @@ export default function AdminScreen() {
         }, 600);
       }
     }
+  }
+
+  function handleResetData() {
+    Alert.alert(
+      'Reset All Data',
+      'This will permanently delete ALL products, orders, and purchases from this tablet. This cannot be undone.\n\nMake sure you have also cleared the web dashboard data first.',
+      [
+        { text: 'Cancel', style: 'cancel' },
+        {
+          text: 'Reset Everything',
+          style: 'destructive',
+          onPress: () => {
+            resetAllData();
+            loadData();
+            Alert.alert('Done', 'All local data has been cleared. You can now add new products.');
+          },
+        },
+      ]
+    );
   }
 
   function handleLock() {
@@ -269,6 +288,15 @@ export default function AdminScreen() {
           )}
         </View>
 
+        {/* Danger Zone */}
+        <View style={styles.dangerSection}>
+          <Text style={styles.dangerTitle}>Danger Zone</Text>
+          <TouchableOpacity style={styles.dangerBtn} onPress={handleResetData}>
+            <Ionicons name="trash-outline" size={18} color="#fff" />
+            <Text style={styles.dangerBtnText}>Reset All App Data</Text>
+          </TouchableOpacity>
+        </View>
+
         <View style={{ height: 30 }} />
       </ScrollView>
     </View>
@@ -370,6 +398,27 @@ const styles = StyleSheet.create({
     borderColor: '#ddd',
   },
   lockBtnText: { fontSize: 13, fontWeight: '600', color: '#666' },
+
+  dangerSection: {
+    marginHorizontal: 16,
+    marginTop: 24,
+    borderWidth: 1,
+    borderColor: '#ffcdd2',
+    borderRadius: 12,
+    padding: 16,
+    backgroundColor: '#fff8f8',
+  },
+  dangerTitle: { fontSize: 12, fontWeight: '700', color: '#c62828', textTransform: 'uppercase', letterSpacing: 0.5, marginBottom: 12 },
+  dangerBtn: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+    backgroundColor: '#c62828',
+    borderRadius: 10,
+    paddingHorizontal: 16,
+    paddingVertical: 12,
+  },
+  dangerBtnText: { color: '#fff', fontWeight: '700', fontSize: 14 },
 
   pendingBanner: {
     flexDirection: 'row',
